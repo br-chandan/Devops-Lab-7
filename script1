@@ -9,25 +9,26 @@ pipeline{
   stages{
   
     stage('GitConnection'){
-      step{
+      steps{
         git branch:'main',url:'https://github.com/br-chandan/Devops-Lab-7'
       }
     }
 
      stage('Compiling'){
-      step{
+      steps{
         echo 'Compiling the Java File'
         sh 'javac Hello.java'
       }
     }
 
     stage('Execution'){
-      step{
+      steps{
         echo 'Executing the Java File and Python File'
         sh 'java Hello'
         sh 'python3 Hello.py'
       }
     }
+  }
 
     post{
       success{
