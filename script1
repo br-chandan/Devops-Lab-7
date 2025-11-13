@@ -17,14 +17,13 @@ pipeline{
      stage('Compiling'){
       steps{
         echo 'Compiling the Java File'
-        sh 'javac Hello.java'
       }
     }
 
     stage('Execution'){
       steps{
         echo 'Executing the Java File and Python File'
-        sh 'java Hello'
+        sh 'java Hello.java'
         sh 'python3 Hello.py'
       }
     }
