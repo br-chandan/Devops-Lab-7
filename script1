@@ -1,0 +1,44 @@
+pipeline{
+
+  agent any
+
+  tools{
+    jdk:'jdk21'
+  }
+
+  stages{
+  
+    stage('GitConnection'){
+      step{
+        git branch:'main',url:'https://github.com/br-chandan/Devops-Lab-7'
+      }
+    }
+
+     stage('Compiling'){
+      step{
+        echo 'Compiling the Java File'
+        sh 'javac Hello.java'
+      }
+    }
+
+    stage('Execution'){
+      step{
+        echo 'Executing the Java File and Python File'
+        sh 'java Hello'
+        sh 'python3 Hello.py'
+      }
+    }
+
+    post{
+      success{
+        echo 'Program Executed without Error'
+      }
+       failure{
+        echo 'Program Exited with Error'
+      }
+    }
+}
+
+
+    
+  
