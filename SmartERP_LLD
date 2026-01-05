@@ -1,0 +1,762 @@
+# SmartERP - Low Level System Design (LLD)
+
+## Document Overview
+
+This Low Level Design (LLD) document provides a comprehensive technical blueprint for the SmartERP system. It covers component-level architecture, class diagrams, sequence diagrams, database design, API specifications, and detailed implementation guidelines for each microservice.
+
+---
+
+## Table of Contents
+
+1. [System Architecture Overview](#1-system-architecture-overview)
+2. [Microservice Component Design](#2-microservice-component-design)
+3. [Database Design](#3-database-design)
+4. [API Design & Specifications](#4-api-design--specifications)
+5. [Class Diagrams](#5-class-diagrams)
+6. [Sequence Diagrams](#6-sequence-diagrams)
+7. [Data Flow Diagrams](#7-data-flow-diagrams)
+8. [Error Handling Strategy](#8-error-handling-strategy)
+9. [Security Design](#9-security-design)
+10. [Deployment Architecture](#10-deployment-architecture)
+
+---
+
+## 1. System Architecture Overview
+
+### 1.1 High-Level Architecture
+
+SmartERP follows a **microservices architecture** with each business domain encapsulated in an independent service. The system consists of 6 core microservices communicating via RESTful APIs.
+
+```mermaid
+graph TB
+    subgraph "Client Layer"
+        WEB[Web Browser]
+        API_CLIENT[API Client/Postman]
+    end
+    
+    subgraph "Gateway Layer"
+        GATEWAY[API Gateway<br/>Port: 8080]
+    end
+    
+    subgraph "Microservices Layer"
+        AUTH[Auth Service<br/>Port: 3006]
+        PROC[Procurement Service<br/>Port: 3001]
+        INV[Inventory Service<br/>Port: 3002]
+        SALES[Sales Service<br/>Port: 3003]
+        FIN[Finance Service<br/>Port: 3004]
+        HR[HR Service<br/>Port: 3005]
+    end
+    
+    subgraph "Data Layer"
+        AUTH_DB[(Auth DB)]
+        PROC_DB[(Procurement DB)]
+        INV_DB[(Inventory DB)]
+        SALES_DB[(Sales DB)]
+        FIN_DB[(Finance DB)]
+        HR_DB[(HR DB)]
+    end
+    
+    WEB --> GATEWAY
+    API_CLIENT --> GATEWAY
+    
+    GATEWAY --> AUTH
+    GATEWAY --> PROC
+    GATEWAY --> INV
+    GATEWAY --> SALES
+    GATEWAY --> FIN
+    GATEWAY --> HR
+    
+    AUTH --> AUTH_DB
+    PROC --> PROC_DB
+    INV --> INV_DB
+    SALES --> SALES_DB
+    FIN --> FIN_DB
+    HR --> HR_DB
+```
+
+### 1.2 Architectural Patterns Used
+
+| Pattern | Description | Implementation |
+|---------|-------------|----------------|
+| **Database per Service** | Each microservice owns its database | Separate MySQL databases for each service |
+| **API Gateway** | Single entry point for all clients | Routes requests to appropriate services |
+| **MVC (Model-View-Controller)** | Separates business logic from data access | Models, Controllers, Routes in each service |
+| **Repository Pattern** | Abstracts data access logic | Model classes encapsulate SQL queries |
+| **Middleware Pattern** | Cross-cutting concerns handling | Validation, logging, error handling |
+
+### 1.3 Technology Stack
+
+| Layer | Technology | Purpose |
+|-------|------------|---------|
+| Runtime | Node.js v18+ | JavaScript runtime environment |
+| Web Framework | Express.js 4.18 | REST API development |
+| Database | MySQL 8.0 | Relational data storage |
+| DB Driver | mysql2 3.6+ | Promise-based MySQL connection |
+| Validation | Joi 17.11 | Request validation schemas |
+| Containerization | Docker | Service isolation & deployment |
+| Orchestration | Docker Compose | Multi-container management |
+
+---
+
+## 2. Microservice Component Design
+
+### 2.1 Common Service Structure
+
+Each microservice follows a consistent folder structure:
+
+```
+<service-name>/
+├── src/
+│   ├── config/
+│   │   └── database.js          # DB configuration & connection pooling
+│   ├── models/
+│   │   └── <Entity>.js          # Data models with CRUD operations
+│   ├── controllers/
+│   │   └── <Entity>Controller.js # Business logic & request handling
+│   ├── routes/
+│   │   └── <Entity>Routes.js    # Route definitions & middleware binding
+│   ├── validators/
+│   │   └── <Entity>Validator.js # Joi validation schemas
+│   └── server.js                # Application entry point
+├── database/
+│   └── schema.sql               # Database schema definition
+├── Dockerfile                   # Container configuration
+├── package.json                 # Dependencies & scripts
+├── .env                         # Environment variables
+└── README.md                    # Service documentation
+```
+
+### 2.2 Procurement Service Component Design
+
+#### 2.2.1 Component Diagram
+
+```mermaid
+graph LR
+    subgraph "Procurement Service"
+        subgraph "Routes Layer"
+            SR[supplierRoutes.js]
+            POR[purchaseOrderRoutes.js]
+        end
+        
+        subgraph "Validators Layer"
+            SV[supplierValidator.js]
+            POV[purchaseOrderValidator.js]
+        end
+        
+        subgraph "Controllers Layer"
+            SC[SupplierController]
+            POC[PurchaseOrderController]
+        end
+        
+        subgraph "Models Layer"
+            SM[Supplier Model]
+            POM[PurchaseOrder Model]
+        end
+        
+        subgraph "Config Layer"
+            DB[database.js]
+        end
+    end
+    
+    subgraph "Database"
+        MYSQL[(MySQL<br/>procurement_db)]
+    end
+    
+    SR --> SV
+    POR --> POV
+    SV --> SC
+    POV --> POC
+    SC --> SM
+    POC --> POM
+    SM --> DB
+    POM --> DB
+    DB --> MYSQL
+```
+
+#### 2.2.2 Supplier Module Components
+
+| Component | File | Responsibility |
+|-----------|------|----------------|
+| **Routes** | `supplierRoutes.js` | Maps HTTP endpoints to controller methods |
+| **Validator** | `supplierValidator.js` | Validates request payload using Joi schemas |
+| **Controller** | `supplierController.js` | Handles business logic, error responses |
+| **Model** | `Supplier.js` | Encapsulates database queries for suppliers |
+
+#### 2.2.3 Purchase Order Module Components
+
+| Component | File | Responsibility |
+|-----------|------|----------------|
+| **Routes** | `purchaseOrderRoutes.js` | Maps HTTP endpoints to controller methods |
+| **Validator** | `purchaseOrderValidator.js` | Validates orders & items, calculates totals |
+| **Controller** | `purchaseOrderController.js` | Handles order lifecycle, status transitions |
+| **Model** | `PurchaseOrder.js` | Manages orders with transactional item creation |
+
+### 2.3 Other Microservices Design
+
+#### 2.3.1 Inventory Service
+
+| Module | Entities | Key Functions |
+|--------|----------|---------------|
+| **Item Management** | `Item` | CRUD operations, stock adjustments |
+| **Stock Tracking** | - | Track quantities, low stock alerts |
+
+#### 2.3.2 Sales Service
+
+| Module | Entities | Key Functions |
+|--------|----------|---------------|
+| **Customer Management** | `Customer` | CRUD operations, customer search |
+| **Sales Orders** | `SalesOrder`, `SalesOrderItem` | Order creation, status tracking |
+
+#### 2.3.3 Finance Service
+
+| Module | Entities | Key Functions |
+|--------|----------|---------------|
+| **Accounts** | `Account` | Create/manage accounts by type |
+| **Transactions** | `Transaction` | Record income/expenses, summaries |
+
+#### 2.3.4 HR Service
+
+| Module | Entities | Key Functions |
+|--------|----------|---------------|
+| **Employee Management** | `Employee` | CRUD operations, search/filter |
+| **Department Management** | `Department` | Organizational structure |
+
+#### 2.3.5 Authentication Service
+
+| Module | Entities | Key Functions |
+|--------|----------|---------------|
+| **User Management** | `User` | Registration, role assignment |
+| **Session Management** | - | JWT token generation, validation |
+
+---
+
+## 3. Database Design
+
+### 3.1 Database Schema Overview
+
+Each microservice has its own dedicated database with the following naming convention:
+- `procurement_db`
+- `inventory_db`
+- `sales_db`
+- `finance_db`
+- `hr_db`
+- `auth_db`
+
+### 3.2 Procurement Database Schema
+
+#### 3.2.1 Entity Relationship Diagram (ERD)
+
+```mermaid
+erDiagram
+    SUPPLIERS {
+        int id PK "AUTO_INCREMENT"
+        varchar name "NOT NULL"
+        varchar contact_person "NOT NULL"
+        varchar phone "NOT NULL"
+        varchar email "UNIQUE, NOT NULL"
+        text address "NOT NULL"
+        timestamp created_at "DEFAULT CURRENT_TIMESTAMP"
+        timestamp updated_at "ON UPDATE CURRENT_TIMESTAMP"
+    }
+    
+    PURCHASE_ORDERS {
+        int id PK "AUTO_INCREMENT"
+        int supplier_id FK "NOT NULL"
+        date order_date "NOT NULL"
+        enum status "Pending|Approved|Received|Cancelled"
+        decimal total_amount "DECIMAL(10,2)"
+        text notes "NULLABLE"
+        timestamp created_at "DEFAULT CURRENT_TIMESTAMP"
+        timestamp updated_at "ON UPDATE CURRENT_TIMESTAMP"
+    }
+    
+    PURCHASE_ORDER_ITEMS {
+        int id PK "AUTO_INCREMENT"
+        int purchase_order_id FK "NOT NULL"
+        varchar item_name "NOT NULL"
+        int quantity "NOT NULL"
+        decimal unit_price "DECIMAL(10,2)"
+        decimal total_price "DECIMAL(10,2)"
+        timestamp created_at "DEFAULT CURRENT_TIMESTAMP"
+    }
+    
+    SUPPLIERS ||--o{ PURCHASE_ORDERS : "has"
+    PURCHASE_ORDERS ||--|{ PURCHASE_ORDER_ITEMS : "contains"
+```
+
+#### 3.2.2 Table Definitions
+
+**suppliers Table**
+```sql
+CREATE TABLE suppliers (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL,
+    contact_person VARCHAR(255) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    address TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_email (email),
+    INDEX idx_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+**purchase_orders Table**
+```sql
+CREATE TABLE purchase_orders (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    supplier_id INT NOT NULL,
+    order_date DATE NOT NULL,
+    status ENUM('Pending', 'Approved', 'Received', 'Cancelled') DEFAULT 'Pending',
+    total_amount DECIMAL(10, 2) NOT NULL,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE,
+    INDEX idx_supplier_id (supplier_id),
+    INDEX idx_status (status),
+    INDEX idx_order_date (order_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+**purchase_order_items Table**
+```sql
+CREATE TABLE purchase_order_items (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    purchase_order_id INT NOT NULL,
+    item_name VARCHAR(255) NOT NULL,
+    quantity INT NOT NULL,
+    unit_price DECIMAL(10, 2) NOT NULL,
+    total_price DECIMAL(10, 2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
+    INDEX idx_purchase_order_id (purchase_order_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+### 3.3 Other Database Schemas
+
+#### 3.3.1 Inventory Database (inventory_db)
+
+```mermaid
+erDiagram
+    ITEMS {
+        int id PK
+        varchar name "NOT NULL"
+        text description
+        varchar category
+        varchar unit
+        int current_stock "DEFAULT 0"
+        int minimum_stock_level "DEFAULT 0"
+        decimal unit_price "DECIMAL(10,2)"
+        timestamp created_at
+        timestamp updated_at
+    }
+```
+
+#### 3.3.2 Sales Database (sales_db)
+
+```mermaid
+erDiagram
+    CUSTOMERS {
+        int id PK
+        varchar name
+        varchar contact_person
+        varchar phone
+        varchar email "UNIQUE"
+        text address
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    SALES_ORDERS {
+        int id PK
+        int customer_id FK
+        date order_date
+        enum status "Pending|Confirmed|Shipped|Delivered"
+        decimal total_amount
+        text notes
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    SALES_ORDER_ITEMS {
+        int id PK
+        int sales_order_id FK
+        varchar item_name
+        int quantity
+        decimal unit_price
+        decimal total_price
+        timestamp created_at
+    }
+    
+    CUSTOMERS ||--o{ SALES_ORDERS : "places"
+    SALES_ORDERS ||--|{ SALES_ORDER_ITEMS : "contains"
+```
+
+#### 3.3.3 Finance Database (finance_db)
+
+```mermaid
+erDiagram
+    ACCOUNTS {
+        int id PK
+        varchar account_name
+        enum account_type "Asset|Liability|Income|Expense"
+        decimal balance "DECIMAL(12,2)"
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    TRANSACTIONS {
+        int id PK
+        int account_id FK
+        date transaction_date
+        text description
+        decimal amount "DECIMAL(10,2)"
+        enum type "Credit|Debit"
+        timestamp created_at
+    }
+    
+    ACCOUNTS ||--o{ TRANSACTIONS : "has"
+```
+
+#### 3.3.4 HR Database (hr_db)
+
+```mermaid
+erDiagram
+    DEPARTMENTS {
+        int id PK
+        varchar department_name
+        int manager_id FK "NULLABLE"
+        text description
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    EMPLOYEES {
+        int id PK
+        varchar name
+        varchar email "UNIQUE"
+        varchar phone
+        int department_id FK
+        varchar designation
+        date join_date
+        enum status "Active|Inactive"
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    DEPARTMENTS ||--o{ EMPLOYEES : "contains"
+```
+
+#### 3.3.5 Auth Database (auth_db)
+
+```mermaid
+erDiagram
+    USERS {
+        int id PK
+        varchar username "UNIQUE"
+        varchar password "HASHED"
+        varchar email "UNIQUE"
+        enum role "Admin|User"
+        enum status "Active|Inactive"
+        timestamp created_at
+        timestamp updated_at
+    }
+```
+
+### 3.4 Database Indexing Strategy
+
+| Table | Index Name | Columns | Purpose |
+|-------|-----------|---------|---------|
+| suppliers | idx_email | email | Fast email lookups for uniqueness |
+| suppliers | idx_name | name | Search optimization |
+| purchase_orders | idx_supplier_id | supplier_id | Join optimization |
+| purchase_orders | idx_status | status | Filter by status |
+| purchase_orders | idx_order_date | order_date | Date range queries |
+
+---
+
+## 4. API Design & Specifications
+
+### 4.1 API Design Principles
+
+1. **RESTful Design**: Resources are nouns, HTTP methods are verbs
+2. **Consistent Response Format**: Uniform JSON structure across all endpoints
+3. **Versioning**: API version prefix (future: `/api/v1/`)
+4. **Error Codes**: Standard HTTP status codes with descriptive messages
+
+### 4.2 Standard Response Format
+
+**Success Response**
+```json
+{
+    "success": true,
+    "message": "Operation successful",
+    "data": { ... },
+    "count": 10  // For list operations
+}
+```
+
+**Error Response**
+```json
+{
+    "success": false,
+    "message": "Error description",
+    "errors": [
+        {
+            "field": "email",
+            "message": "Email is required"
+        }
+    ]
+}
+```
+
+### 4.3 Procurement Service API Specification
+
+#### 4.3.1 Supplier Endpoints
+
+| Method | Endpoint | Description | Request Body | Response |
+|--------|----------|-------------|--------------|----------|
+| `GET` | `/api/suppliers` | Get all suppliers | - | List of suppliers |
+| `GET` | `/api/suppliers/search?q={query}` | Search suppliers | - | Matching suppliers |
+| `GET` | `/api/suppliers/:id` | Get supplier by ID | - | Single supplier |
+| `POST` | `/api/suppliers` | Create supplier | Supplier object | Created supplier |
+| `PUT` | `/api/suppliers/:id` | Update supplier | Partial supplier | Updated supplier |
+| `DELETE` | `/api/suppliers/:id` | Delete supplier | - | Success message |
+
+**POST /api/suppliers - Request Body Schema**
+```json
+{
+    "name": "string (required, 2-255 chars)",
+    "contact_person": "string (required, 2-255 chars)",
+    "phone": "string (required, 10-20 chars, valid phone format)",
+    "email": "string (required, valid email, unique)",
+    "address": "string (required, min 5 chars)"
+}
+```
+
+#### 4.3.2 Purchase Order Endpoints
+
+| Method | Endpoint | Description | Request Body | Response |
+|--------|----------|-------------|--------------|----------|
+| `GET` | `/api/purchase-orders` | Get all orders | - | List of orders |
+| `GET` | `/api/purchase-orders?status={status}` | Filter by status | - | Filtered orders |
+| `GET` | `/api/purchase-orders?supplier_id={id}` | Filter by supplier | - | Filtered orders |
+| `GET` | `/api/purchase-orders/:id` | Get order with items | - | Order with items |
+| `GET` | `/api/purchase-orders/supplier/:id/history` | Supplier order history | - | Order history |
+| `POST` | `/api/purchase-orders` | Create order | Order object | Created order |
+| `PUT` | `/api/purchase-orders/:id` | Update order | Partial order | Updated order |
+| `PATCH` | `/api/purchase-orders/:id/status` | Update status | Status object | Updated order |
+| `DELETE` | `/api/purchase-orders/:id` | Delete order | - | Success message |
+
+**POST /api/purchase-orders - Request Body Schema**
+```json
+{
+    "supplier_id": "number (required, positive)",
+    "order_date": "string (required, ISO date YYYY-MM-DD)",
+    "status": "string (optional, enum: Pending|Approved|Received|Cancelled)",
+    "notes": "string (optional, max 1000 chars)",
+    "items": [
+        {
+            "item_name": "string (required, 2-255 chars)",
+            "quantity": "number (required, integer, min 1)",
+            "unit_price": "number (required, positive, 2 decimal places)"
+        }
+    ]
+}
+```
+
+### 4.4 HTTP Status Codes
+
+| Code | Meaning | Used For |
+|------|---------|----------|
+| 200 | OK | Successful GET, PUT, PATCH, DELETE |
+| 201 | Created | Successful POST |
+| 400 | Bad Request | Validation errors |
+| 404 | Not Found | Resource not found |
+| 409 | Conflict | Duplicate email, FK constraint violation |
+| 500 | Server Error | Unexpected server errors |
+
+---
+
+## 5. Class Diagrams
+
+### 5.1 Procurement Service Class Diagram
+
+```mermaid
+classDiagram
+    class SupplierController {
+        +getAllSuppliers(req, res)
+        +getSupplierById(req, res)
+        +createSupplier(req, res)
+        +updateSupplier(req, res)
+        +deleteSupplier(req, res)
+        +searchSuppliers(req, res)
+    }
+    
+    class Supplier {
+        +getAll() Promise~Supplier[]~
+        +getById(id) Promise~Supplier~
+        +getByEmail(email) Promise~Supplier~
+        +create(supplierData) Promise~number~
+        +update(id, supplierData) Promise~boolean~
+        +delete(id) Promise~boolean~
+        +search(searchTerm) Promise~Supplier[]~
+    }
+    
+    class PurchaseOrderController {
+        +getAllOrders(req, res)
+        +getOrderById(req, res)
+        +getOrderHistory(req, res)
+        +createOrder(req, res)
+        +updateOrder(req, res)
+        +updateOrderStatus(req, res)
+        +deleteOrder(req, res)
+    }
+    
+    class PurchaseOrder {
+        +getAll() Promise~PurchaseOrder[]~
+        +getById(id) Promise~PurchaseOrder~
+        +getBySupplier(supplierId) Promise~PurchaseOrder[]~
+        +getByStatus(status) Promise~PurchaseOrder[]~
+        +create(orderData) Promise~number~
+        +update(id, orderData) Promise~boolean~
+        +updateStatus(id, status) Promise~boolean~
+        +delete(id) Promise~boolean~
+    }
+    
+    class SupplierValidator {
+        +validateSupplier(req, res, next)
+        +validateUpdateSupplier(req, res, next)
+    }
+    
+    class PurchaseOrderValidator {
+        +validatePurchaseOrder(req, res, next)
+        +validateUpdatePurchaseOrder(req, res, next)
+        +validateStatusUpdate(req, res, next)
+    }
+    
+    class Database {
+        +pool: ConnectionPool
+        +testConnection() Promise~boolean~
+        +initializeDatabase() Promise~void~
+    }
+    
+    SupplierController ..> Supplier : uses
+    PurchaseOrderController ..> PurchaseOrder : uses
+    PurchaseOrderController ..> Supplier : validates FK
+    Supplier ..> Database : queries
+    PurchaseOrder ..> Database : queries
+    SupplierValidator ..> SupplierController : validates
+    PurchaseOrderValidator ..> PurchaseOrderController : validates
+```
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    networks:
+      - smarterp-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  procurement-service:
+    build: ./microservices/procurement-service
+    ports:
+      - "3001:3001"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: root_password
+      DB_NAME: procurement_db
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - smarterp-network
+
+  # Similar configuration for other services...
+
+networks:
+  smarterp-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+```
+
+### 10.4 Port Allocation
+
+| Service | Container Port | Host Port | Database |
+|---------|---------------|-----------|----------|
+| API Gateway | 8080 | 8080 | - |
+| Procurement | 3001 | 3001 | procurement_db |
+| Inventory | 3002 | 3002 | inventory_db |
+| Sales | 3003 | 3003 | sales_db |
+| Finance | 3004 | 3004 | finance_db |
+| HR | 3005 | 3005 | hr_db |
+| Auth | 3006 | 3006 | auth_db |
+| MySQL | 3306 | 3306 | - |
+
+---
+
+## Appendix A: Validation Rules Summary
+
+### Supplier Validation
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| name | string | Yes | 2-255 characters |
+| contact_person | string | Yes | 2-255 characters |
+| phone | string | Yes | 10-20 chars, valid phone format |
+| email | string | Yes | Valid email, unique |
+| address | string | Yes | Minimum 5 characters |
+
+### Purchase Order Validation
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| supplier_id | number | Yes | Positive integer, must exist |
+| order_date | string | Yes | ISO date format (YYYY-MM-DD) |
+| status | string | No | Enum: Pending, Approved, Received, Cancelled |
+| notes | string | No | Maximum 1000 characters |
+| items | array | Yes | Minimum 1 item |
+| items[].item_name | string | Yes | 2-255 characters |
+| items[].quantity | number | Yes | Integer, minimum 1 |
+| items[].unit_price | number | Yes | Positive, 2 decimal places |
+
+---
+
+## Appendix B: Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| PORT | No | 3001 | Service port |
+| NODE_ENV | No | development | Environment mode |
+| DB_HOST | Yes | localhost | Database host |
+| DB_PORT | No | 3306 | Database port |
+| DB_USER | Yes | root | Database username |
+| DB_PASSWORD | Yes | - | Database password |
+| DB_NAME | Yes | procurement_db | Database name |
+
+---
+
+## Document Metadata
+
+| Field | Value |
+|-------|-------|
+| **Document Title** | SmartERP Low Level System Design |
+| **Version** | 1.0 |
+| **Created** | January 2026 |
+| **Project** | SmartERP - Microservices-based ERP System |
+| **Target Audience*
